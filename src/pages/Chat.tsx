@@ -20,32 +20,37 @@ import {
   Video
 } from 'lucide-react';
 import { db } from '@/lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useAuth } from '@/hooks/useAuth';
 import { Message } from '@/types';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
-// Mock data for chat rooms/contacts
 const chatRooms = [
+    { id: 'ai-assistant', name: 'AI Assistant', description: 'Chat directly with Gemini' },
     { id: 'general', name: 'Team Collaboration', description: 'Metro Extension Project' },
     { id: 'safety-q4', name: 'Safety Report Q4', description: 'Compliance Discussion' },
-    { id: 'budget-2024', name: 'Budget 2024', description: 'Financial Planning' },
 ];
 
 const Chat = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
-  const [activeChatId, setActiveChatId] = useState<string>('general');
+  const [activeChatId, setActiveChatId] = useState<string>('ai-assistant');
+  const [isAiReplying, setIsAiReplying] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const functions = getFunctions();
 
   useEffect(() => {
-    if (!activeChatId) return;
+    if (!activeChatId || !user) return;
 
     const q = query(
         collection(db, 'messages'),
         where('chatId', '==', activeChatId),
+        where('participants', 'array-contains', user.uid),
         orderBy('timestamp', 'asc')
     );
 
@@ -55,7 +60,7 @@ const Chat = () => {
     });
 
     return () => unsubscribe();
-  }, [activeChatId]);
+  }, [activeChatId, user]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -67,15 +72,44 @@ const Chat = () => {
     e.preventDefault();
     if (!message.trim() || !user || !activeChatId) return;
 
-    await addDoc(collection(db, 'messages'), {
+    const userMessage = {
       chatId: activeChatId,
       sender: user.displayName || user.email,
       senderId: user.uid,
       content: message,
       timestamp: serverTimestamp(),
-    });
+      participants: [user.uid]
+    };
 
+    await addDoc(collection(db, 'messages'), userMessage);
+    const sentMessage = message;
     setMessage('');
+
+    if (activeChatId === 'ai-assistant') {
+      setIsAiReplying(true);
+      try {
+        const chatWithAI = httpsCallable(functions, 'chatWithAI');
+        const result = await chatWithAI({ message: sentMessage });
+        const aiResponse = (result.data as { response: string }).response;
+
+        const aiMessage = {
+            chatId: activeChatId,
+            sender: 'AI Assistant',
+            senderId: 'gemini-ai',
+            content: aiResponse,
+            timestamp: serverTimestamp(),
+            isBot: true,
+            participants: [user.uid]
+        };
+        await addDoc(collection(db, 'messages'), aiMessage);
+
+      } catch (error) {
+        console.error("Error calling AI chat function:", error);
+        toast({ title: "AI Error", description: "The AI assistant could not respond.", variant: "destructive" });
+      } finally {
+        setIsAiReplying(false);
+      }
+    }
   };
 
   const formatTime = (timestamp: Timestamp | null) => {
@@ -94,7 +128,6 @@ const Chat = () => {
         transition={{ duration: 0.5 }}
         className="w-80 border-r border-border bg-card/30 backdrop-blur-sm flex flex-col"
       >
-        {/* Header */}
         <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
@@ -105,13 +138,7 @@ const Chat = () => {
               <MoreVertical className="h-4 w-4" />
             </Button>
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search conversations..." className="pl-10 bg-input/50" />
-          </div>
         </div>
-
-        {/* Chat Rooms List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
             <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide px-2">
                 Channels
@@ -119,9 +146,6 @@ const Chat = () => {
             {chatRooms.map((room) => (
                 <motion.div
                     key={room.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
                     onClick={() => setActiveChatId(room.id)}
                     className={cn(
                         "p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors",
@@ -137,7 +161,6 @@ const Chat = () => {
 
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Chat Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -151,16 +174,9 @@ const Chat = () => {
                 {activeChat?.description || 'No chat selected'}
               </p>
             </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
-                <Users className="h-3 w-3 mr-1" />
-                {messages.length > 0 ? [...new Set(messages.map(m => m.senderId))].length : 0} online
-              </Badge>
-            </div>
           </div>
         </motion.div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <AnimatePresence>
             {messages.map((msg) => (
@@ -169,9 +185,7 @@ const Chat = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
-                className={`flex items-start space-x-3 ${
-                  msg.senderId === user?.uid ? 'flex-row-reverse space-x-reverse' : ''
-                }`}
+                className={`flex items-start space-x-3 ${ msg.senderId === user?.uid ? 'flex-row-reverse space-x-reverse' : '' }`}
               >
                 <Avatar className="h-8 w-8 flex-shrink-0">
                   <AvatarFallback className={cn(
@@ -204,11 +218,28 @@ const Chat = () => {
                 </div>
               </motion.div>
             ))}
+            {isAiReplying && (
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-start space-x-3"
+                >
+                    <Avatar className="h-8 w-8 flex-shrink-0">
+                        <AvatarFallback className="bg-primary text-primary-foreground">
+                            <Bot className="h-4 w-4 animate-pulse" />
+                        </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 max-w-lg">
+                        <div className="rounded-lg p-4 bg-primary/10 border border-primary/20">
+                            <p className="text-sm leading-relaxed animate-pulse">AI is typing...</p>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
           </AnimatePresence>
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Message Input */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -219,17 +250,14 @@ const Chat = () => {
             <Input
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Type your message..."
+              placeholder={activeChatId === 'ai-assistant' ? 'Chat with Gemini...' : 'Type your message...'}
               className="flex-1 bg-input/50"
-              disabled={!activeChatId}
+              disabled={!activeChatId || isAiReplying}
             />
-            <Button type="submit" variant="metro" size="icon" disabled={!message.trim() || !activeChatId}>
+            <Button type="submit" variant="metro" size="icon" disabled={!message.trim() || !activeChatId || isAiReplying}>
               <Send className="h-4 w-4" />
             </Button>
           </form>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            AI assistant is active and ready to help with document analysis
-          </p>
         </motion.div>
       </div>
     </div>
