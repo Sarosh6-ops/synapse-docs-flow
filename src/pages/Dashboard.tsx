@@ -36,6 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ModeToggle } from '@/components/mode-toggle';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -185,6 +186,7 @@ const Dashboard = () => {
               <Button variant="ghost" size="icon">
                 <Settings className="h-4 w-4" />
               </Button>
+              <ModeToggle />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <div className="flex items-center space-x-3 pl-4 border-l border-border cursor-pointer">
