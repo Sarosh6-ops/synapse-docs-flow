@@ -126,7 +126,13 @@ const Chat = () => {
   const activeChat = chatRooms.find(room => room.id === activeChatId);
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+      className="min-h-screen bg-background flex"
+    >
       <motion.div
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}

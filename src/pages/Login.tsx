@@ -29,7 +29,13 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen hero-gradient flex items-center justify-center p-6 relative overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+      className="min-h-screen hero-gradient flex items-center justify-center p-6 relative overflow-hidden"
+    >
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         <motion.div
