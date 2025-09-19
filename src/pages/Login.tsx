@@ -1,32 +1,57 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Train, Zap, Shield, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { auth, googleProvider } from '@/lib/firebase';
+import { signInWithPopup } from 'firebase/auth';
+import { useAuth } from '@/hooks/useAuth';
 
 const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading } = useAuth();
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/dashboard');
+    }
+  }, [user, loading, navigate]);
+
+  const handleGoogleSignIn = async () => {
     setIsLoading(true);
-    
-    // Simulate login process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    toast({
-      title: "Welcome to KMRL Synapse",
-      description: "Successfully logged in as Arjun Nair",
-    });
-    
-    navigate('/dashboard');
-    setIsLoading(false);
+    try {
+      await signInWithPopup(auth, googleProvider);
+      toast({
+        title: "Login Successful",
+        description: "Welcome to KMRL Synapse.",
+      });
+      navigate('/dashboard');
+    } catch (error: any) {
+      toast({
+        title: "Google Sign-In Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  if (loading || (!loading && user)) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen hero-gradient flex items-center justify-center p-6 relative overflow-hidden">
@@ -136,45 +161,23 @@ const Login = () => {
                   <p className="text-muted-foreground">Sign in to access KMRL Synapse</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Employee ID</label>
-                    <Input 
-                      type="text" 
-                      placeholder="Enter your employee ID"
-                      defaultValue="EMP001"
-                      className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors"
+                <Button
+                  onClick={handleGoogleSignIn}
+                  variant="metro"
+                  size="lg"
+                  className="w-full"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full"
                     />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Password</label>
-                    <Input 
-                      type="password" 
-                      placeholder="Enter your password"
-                      defaultValue="password"
-                      className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors"
-                    />
-                  </div>
-
-                  <Button 
-                    type="submit" 
-                    variant="metro" 
-                    size="lg" 
-                    className="w-full"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                        className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full"
-                      />
-                    ) : (
-                      "Sign In"
-                    )}
-                  </Button>
-                </form>
+                  ) : (
+                    "Sign In with Google"
+                  )}
+                </Button>
 
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground">
