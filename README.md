@@ -6,7 +6,7 @@ KMRL Synapse 🚆✨
 Intelligent Document Management for Modern Transit Systems
 Built for the Smart India Hackathon
 
-Live Demo: [Link to your Vercel/Netlify deployment]
+Live Demo: 
 
 The Problem
 Kochi Metro Rail Limited (KMRL) is overwhelmed by a massive and diverse volume of daily documents—from engineering drawings and vendor invoices to safety circulars and HR policies. This information overload creates a "silent productivity tax," leading to delayed decisions, departmental silos, compliance risks, and duplicated work.
@@ -89,8 +89,11 @@ Open your browser and navigate to http://localhost:3000.
 
 Team Members
 Sarosh Kumar
-
-[Add other team members here]
+Atharva
+Yug Palrecha
+Gayatri Patil
+Sharanabasava Patil
+Anirudh
 
 Future Scope
 Direct integration with email and WhatsApp to automatically ingest documents.
