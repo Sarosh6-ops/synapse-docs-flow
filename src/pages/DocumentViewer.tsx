@@ -89,7 +89,7 @@ const DocumentViewer = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background p-8">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-background p-8">
         <Skeleton className="h-12 w-1/2 mb-8" />
         <div className="grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-4">
@@ -100,12 +100,12 @@ const DocumentViewer = () => {
             <Skeleton className="h-64 w-full" />
           </div>
         </div>
-      </div>
+      </motion.div>
     );
   }
 
   if (!document) {
-    return <div>Document not found.</div>;
+    return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>Document not found.</motion.div>;
   }
 
   return (
