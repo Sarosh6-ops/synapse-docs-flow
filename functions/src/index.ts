@@ -1,109 +1,94 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { ImageAnnotatorClient } from "@google-cloud/vision";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getStorage } from "firebase-admin/storage";
+import { getFirestore } from "firebase-admin/firestore";
 
+// Initialize Firebase Admin SDK
 admin.initializeApp();
 
-const db = admin.firestore();
-const visionClient = new ImageAnnotatorClient();
+// Initialize Cloud Storage and Firestore
+const storage = getStorage();
+const db = getFirestore();
+
+// Initialize Google Gemini AI
+// Make sure to set the API key in your Firebase project's configuration:
+// firebase functions:config:set gemini.api_key="YOUR_GEMINI_API_KEY"
 const genAI = new GoogleGenerativeAI(functions.config().gemini.api_key);
 
-export const invoiceExtractor = functions.storage.object().onFinalize(async (object) => {
+exports.processDocument = functions.storage.object().onFinalize(async (object) => {
   const filePath = object.name;
-  const contentType = object.contentType;
-
-  if (!contentType?.startsWith("image/")) {
-    return functions.logger.log("This is not an image.");
-  }
-  if (!filePath) {
-      return functions.logger.log("File path not found.");
-  }
-
+  const contentType = object.contentType || "unknown";
   const bucketName = object.bucket;
-  const bucket = admin.storage().bucket(bucketName);
-  const gcsUri = `gs://${bucketName}/${filePath}`;
 
-  const [result] = await visionClient.textDetection(gcsUri);
-  const detections = result.textAnnotations;
-  const text = detections?.[0]?.description || "";
+  if (!filePath || !filePath.startsWith("documents/")) {
+    functions.logger.log("Not a file in the documents directory, skipping.");
+    return;
+  }
 
-  const docId = filePath.split("/").pop()?.split(".")[0]
-  if(!docId) {
-      functions.logger.log("Could not determine document ID.");
+  const fileNameWithTimestamp = filePath.split("/").pop() || "";
+  const fileName = fileNameWithTimestamp.split("-").slice(1).join("-");
+
+  if (!fileName) {
+      functions.logger.error(`Could not determine file name from path: ${filePath}`);
       return;
   }
-  const documents = await db.collection("documents").where("title", "==", docId).get();
-  if (documents.empty) {
-      functions.logger.log("No matching documents found.");
-      return;
+
+  const documentsRef = db.collection("documents");
+  const q = documentsRef.where("title", "==", fileName).where("status", "==", "processing").limit(1);
+  const querySnapshot = await q.get();
+
+  if (querySnapshot.empty) {
+    functions.logger.log(`No pending document found for file: ${fileName}`);
+    return;
   }
-  const docRef = documents.docs[0].ref;
 
+  const documentRef = querySnapshot.docs[0].ref;
 
-  await docRef.update({
-    status: "analyzed",
-    content: text,
-    aiScore: 90, // Placeholder
-  });
+  let textContent = "";
+  const bucket = storage.bucket(bucketName);
+  const file = bucket.file(filePath);
 
-  await docRef.collection("insights").add({
-      summary: "This is a summary from the invoice extractor.",
-      keyPoints: ["Point 1", "Point 2"],
-      actionItems: [],
-      alerts: [],
-      confidence: 90,
-      processingTime: "1.2 seconds",
-  });
-});
+  if (contentType.startsWith("text/")) {
+    const fileContentBuffer = await file.download();
+    textContent = fileContentBuffer.toString("utf8");
+  } else {
+    functions.logger.log(`Unsupported content type: ${contentType}. Skipping AI processing.`);
+    await documentRef.update({
+      status: "failed",
+      aiSummary: "File type not supported for AI analysis.",
+    });
+    return;
+  }
 
-export const documentSummarizer = functions.storage.object().onFinalize(async (object) => {
-    const filePath = object.name;
-    const contentType = object.contentType;
+  if (!textContent) {
+    functions.logger.log("No text content found in the file.");
+    await documentRef.update({
+        status: "failed",
+        aiSummary: "Could not extract any text from the document.",
+    });
+    return;
+  }
 
-    if (contentType?.startsWith("image/")) {
-        return functions.logger.log("This is an image, skipping summarization.");
-    }
-    if (!filePath) {
-        return functions.logger.log("File path not found.");
-    }
-
-    const bucketName = object.bucket;
-    const bucket = admin.storage().bucket(bucketName);
-    const file = bucket.file(filePath);
-    const fileContent = (await file.download()).toString();
-
+  let summary = "Could not generate summary.";
+  try {
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-    const prompt = `Summarize the following document:\n\n${fileContent}`;
+    const prompt = `Summarize this document and identify key insights: "${textContent}"`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const summary = response.text();
+    summary = response.text();
+  } catch (error) {
+    functions.logger.error("Gemini AI failed:", error);
+    await documentRef.update({ status: "failed", aiSummary: "AI analysis failed." });
+    return;
+  }
 
-    const docId = filePath.split("/").pop()?.split(".")[0]
-    if(!docId) {
-        functions.logger.log("Could not determine document ID.");
-        return;
-    }
-    const documents = await db.collection("documents").where("title", "==", docId).get();
-    if (documents.empty) {
-        functions.logger.log("No matching documents found.");
-        return;
-    }
-    const docRef = documents.docs[0].ref;
+  await documentRef.update({
+    status: "analyzed",
+    aiSummary: summary,
+    aiScore: 90, // Placeholder
+    insights: 5, // Placeholder
+  });
 
-
-    await docRef.update({
-        status: "analyzed",
-        content: fileContent,
-        aiScore: 95, // Placeholder
-    });
-
-    await docRef.collection("insights").add({
-        summary: summary,
-        keyPoints: ["Point 1 from Gemini", "Point 2 from Gemini"],
-        actionItems: [],
-        alerts: [],
-        confidence: 95,
-        processingTime: "2.5 seconds",
-    });
+  functions.logger.log(`Successfully processed ${filePath} and updated document ${documentRef.id}.`);
 });

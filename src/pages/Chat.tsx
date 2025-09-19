@@ -32,7 +32,7 @@ const Chat = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'messages'), orderBy('timestamp'));
+    const q = query(collection(db, 'messages'), orderBy('timestamp', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
       setMessages(msgs);
@@ -63,7 +63,7 @@ const Chat = () => {
   };
 
   const formatTime = (timestamp: Timestamp | null) => {
-    if (!timestamp) return '';
+    if (!timestamp) return '...';
     return new Intl.DateTimeFormat('en-US', {
       hour: '2-digit',
       minute: '2-digit'
@@ -114,9 +114,9 @@ const Chat = () => {
             Online Now ({onlineUsers.filter(u => u.status === 'online').length})
           </h3>
           <div className="space-y-3">
-            {onlineUsers.map((user, index) => (
+            {onlineUsers.map((u, index) => (
               <motion.div
-                key={user.name}
+                key={u.name}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.1 }}
@@ -124,19 +124,19 @@ const Chat = () => {
               >
                 <div className="relative">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className={user.name === 'AI Assistant' ? 'bg-primary text-primary-foreground' : 'bg-muted'}>
-                      {user.avatar}
+                    <AvatarFallback className={u.name === 'AI Assistant' ? 'bg-primary text-primary-foreground' : 'bg-muted'}>
+                      {u.avatar}
                     </AvatarFallback>
                   </Avatar>
                   <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-background ${
-                    user.status === 'online' ? 'bg-success' : 'bg-warning'
+                    u.status === 'online' ? 'bg-success' : 'bg-warning'
                   }`} />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium">{user.name}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{user.status}</p>
+                  <p className="text-sm font-medium">{u.name}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{u.status}</p>
                 </div>
-                {user.name !== 'Arjun Nair' && (
+                {u.name !== 'Arjun Nair' && (
                   <div className="flex space-x-1">
                     <Button variant="ghost" size="icon" className="h-6 w-6">
                       <Phone className="h-3 w-3" />
@@ -205,12 +205,12 @@ const Chat = () => {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <AnimatePresence>
-            {messages.map((msg, index) => (
+            {messages.map((msg) => (
               <motion.div
                 key={msg.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.1 }}
+                transition={{ duration: 0.3 }}
                 className={`flex items-start space-x-3 ${
                   msg.senderId === user?.uid ? 'flex-row-reverse space-x-reverse' : ''
                 }`}
@@ -281,7 +281,7 @@ const Chat = () => {
               placeholder="Type your message..."
               className="flex-1 bg-input/50"
             />
-            <Button type="submit" variant="metro" size="icon">
+            <Button type="submit" variant="metro" size="icon" disabled={!message.trim()}>
               <Send className="h-4 w-4" />
             </Button>
           </form>

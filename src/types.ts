@@ -2,15 +2,16 @@ import { Timestamp } from "firebase/firestore";
 
 export interface Document {
   id: string;
+  uid: string;
   title: string;
   type: string;
-  uploadedAt: Timestamp;
-  status: "analyzed" | "processing" | "failed";
-  aiScore: number | null;
   size: number;
-  insights: number;
-  uid: string;
   downloadUrl: string;
+  uploadedAt: Timestamp;
+  status: 'processing' | 'analyzed' | 'failed';
+  aiSummary?: string;
+  aiScore?: number | null;
+  insights?: number;
   content?: string;
 }
 

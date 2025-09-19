@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,15 +17,25 @@ import {
   Settings,
   Download,
   Eye,
-  Zap
+  Zap,
+  LogOut
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { db, storage } from '@/lib/firebase';
+import { db, storage, auth } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Document } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
+import { signOut } from 'firebase/auth';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -37,7 +47,10 @@ const Dashboard = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    };
 
     setLoading(true);
     const q = query(collection(db, 'documents'), where('uid', '==', user.uid));
@@ -45,13 +58,17 @@ const Dashboard = () => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
       setDocuments(docs);
       setLoading(false);
+    }, (error) => {
+      console.error("Error fetching documents: ", error);
+      toast({ title: "Error", description: "Could not fetch documents.", variant: "destructive" });
+      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, toast]);
 
   const stats = [
-    { label: 'Documents Analyzed', value: '1,247', change: '+12%', icon: FileText },
+    { label: 'Documents Analyzed', value: documents.length, change: '+12%', icon: FileText },
     { label: 'AI Insights Generated', value: '3,891', change: '+8%', icon: Zap },
     { label: 'Time Saved (Hours)', value: '156', change: '+24%', icon: Clock },
     { label: 'Active Collaborations', value: '23', change: '+5%', icon: MessageSquare }
@@ -72,24 +89,39 @@ const Dashboard = () => {
   };
 
   const handleUpload = (file: File) => {
-    if (!user) return;
+    if (!user) {
+      toast({ title: "Not authenticated", description: "You must be logged in to upload files.", variant: "destructive" });
+      return;
+    }
 
-    const storageRef = ref(storage, `documents/${user.uid}/${file.name}`);
+    const toastId = "upload-toast";
+    toast({
+      id: toastId,
+      title: "Uploading...",
+      description: `Your document "${file.name}" is being uploaded.`,
+    });
+
+    const storageRef = ref(storage, `documents/${user.uid}/${Date.now()}-${file.name}`);
     const uploadTask = uploadBytesResumable(storageRef, file);
 
     uploadTask.on('state_changed',
       (snapshot) => {
-        // Handle progress
+        // Optional: handle progress
       },
       (error) => {
-        toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+        toast({
+          id: toastId,
+          title: "Upload failed",
+          description: error.message,
+          variant: "destructive",
+        });
       },
       () => {
         getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
           await addDoc(collection(db, 'documents'), {
             uid: user.uid,
             title: file.name,
-            type: file.type,
+            type: file.type || 'unknown',
             size: file.size,
             downloadUrl: downloadURL,
             uploadedAt: serverTimestamp(),
@@ -97,19 +129,28 @@ const Dashboard = () => {
             aiScore: null,
             insights: 0,
           });
-          toast({ title: "Upload successful", description: "Your document is being processed." });
+          toast({
+            id: toastId,
+            title: "Upload successful!",
+            description: "Your document is now being processed by the AI.",
+          });
         });
       }
     );
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    navigate('/login');
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -131,9 +172,9 @@ const Dashboard = () => {
               </div>
               
               <nav className="hidden md:flex items-center space-x-6">
-                <Button variant="ghost" className="font-medium">Dashboard</Button>
-                <Button variant="ghost" onClick={() => navigate('/chat')}>Chat</Button>
-                <Button variant="ghost">Analytics</Button>
+                <Button variant="ghost" className="font-medium" asChild><Link to="/dashboard">Dashboard</Link></Button>
+                <Button variant="ghost" asChild><Link to="/chat">Chat</Link></Button>
+                <Button variant="ghost" asChild><Link to="/analytics">Analytics</Link></Button>
               </nav>
             </div>
 
@@ -144,15 +185,27 @@ const Dashboard = () => {
               <Button variant="ghost" size="icon">
                 <Settings className="h-4 w-4" />
               </Button>
-              <div className="flex items-center space-x-3 pl-4 border-l border-border">
-                <div className="w-8 h-8 rounded-full bg-metro-blue/20 flex items-center justify-center">
-                  <User className="h-4 w-4 text-metro-blue" />
-                </div>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-medium">{user?.displayName || user?.email}</p>
-                  <p className="text-xs text-muted-foreground">{user?.uid.slice(0,6)}</p>
-                </div>
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <div className="flex items-center space-x-3 pl-4 border-l border-border cursor-pointer">
+                    <div className="w-8 h-8 rounded-full bg-metro-blue/20 flex items-center justify-center">
+                      <User className="h-4 w-4 text-metro-blue" />
+                    </div>
+                    <div className="hidden sm:block">
+                      <p className="text-sm font-medium">{user?.displayName || user?.email}</p>
+                      <p className="text-xs text-muted-foreground">{user?.email}</p>
+                    </div>
+                  </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -167,7 +220,7 @@ const Dashboard = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="space-y-2"
         >
-          <h2 className="text-3xl font-bold">Welcome back, {user?.displayName || user?.email?.split('@')[0]}</h2>
+          <h2 className="text-3xl font-bold">Welcome back, {user?.displayName || 'User'}</h2>
           <p className="text-muted-foreground">Here's what's happening with your documents today.</p>
         </motion.div>
 
@@ -209,13 +262,12 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
-          <Card className="p-8 glass-effect border-2 border-dashed border-primary/30 text-center hover:border-primary/50 transition-colors">
+          <Card className="p-8 glass-effect border-2 border-dashed border-primary/30 text-center hover:border-primary/50 transition-colors cursor-pointer" onClick={handleUploadClick}>
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
             <motion.div
               whileHover={{ scale: 1.05 }}
               className="space-y-4"
-              onClick={handleUploadClick}
             >
-              <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
               <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
                 <Upload className="h-8 w-8 text-primary" />
               </div>
@@ -312,7 +364,7 @@ const Dashboard = () => {
 
                       <div className="flex items-center justify-between pt-4 border-t border-border/50">
                         <span className="text-sm text-muted-foreground">
-                          {doc.insights} AI insights available
+                          {doc.insights && doc.insights > 0 ? `${doc.insights} AI insights available` : 'No insights yet'}
                         </span>
                         <Button variant="ghost" size="sm">
                           <Eye className="h-3 w-3 mr-2" />
