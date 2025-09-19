@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Messages: Users can read/write messages in chats they are a participant in.
+    // The `participants` field in a message document should be an array containing the UIDs of the users in the chat.
+    match /messages/{messageId} {
+      allow read, create: if request.auth != null && request.auth.uid in resource.data.participants;
+    }
+
+    // Documents: Users can only read/write their own documents.
+    match /documents/{documentId} {
+      allow read, create, update, delete: if request.auth != null && request.auth.uid == resource.data.uid;
+
+      // Insights subcollection can be read by the document owner.
+      match /insights/{insightId} {
+         allow read: if request.auth != null && get(/databases/$(database)/documents/documents/$(documentId)).data.uid == request.auth.uid;
+      }
+    }
+
+    // Default deny all other reads/writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
