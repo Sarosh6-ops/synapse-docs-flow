@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,62 +17,59 @@ import {
   Settings,
   Download,
   Eye,
-  Zap
+  Zap,
+  LogOut
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
+import { db, storage, auth } from '@/lib/firebase';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { Document } from '@/types';
+import { formatDistanceToNow } from 'date-fns';
+import { signOut } from 'firebase/auth';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Mock data for documents
-  const recentDocuments = [
-    {
-      id: 'doc-1',
-      title: 'Metro Line Extension Proposal',
-      type: 'PDF',
-      uploadedAt: '2 hours ago',
-      status: 'analyzed',
-      aiScore: 95,
-      size: '2.4 MB',
-      insights: 3
-    },
-    {
-      id: 'doc-2',
-      title: 'Safety Inspection Report Q4',
-      type: 'DOCX',
-      uploadedAt: '5 hours ago',
-      status: 'processing',
-      aiScore: null,
-      size: '1.8 MB',
-      insights: 0
-    },
-    {
-      id: 'doc-3',
-      title: 'Equipment Purchase Invoice',
-      type: 'JPG',
-      uploadedAt: '1 day ago',
-      status: 'analyzed',
-      aiScore: 88,
-      size: '856 KB',
-      insights: 5
-    },
-    {
-      id: 'doc-4',
-      title: 'Maintenance Schedule Updates',
-      type: 'PDF',
-      uploadedAt: '2 days ago',
-      status: 'analyzed',
-      aiScore: 92,
-      size: '3.1 MB',
-      insights: 2
-    }
-  ];
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    };
+
+    setLoading(true);
+    const q = query(collection(db, 'documents'), where('uid', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
+      setDocuments(docs);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching documents: ", error);
+      toast({ title: "Error", description: "Could not fetch documents.", variant: "destructive" });
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user, toast]);
 
   const stats = [
-    { label: 'Documents Analyzed', value: '1,247', change: '+12%', icon: FileText },
-    { label: 'AI Insights Generated', value: '3,891', change: '+8%', icon: Zap },
+    { label: 'Documents Analyzed', value: documents.length, change: '+12%', icon: FileText },
+    { label: 'AI Insights Generated', value: documents.reduce((acc, doc) => acc + (doc.insights || 0), 0), change: '+8%', icon: Zap },
     { label: 'Time Saved (Hours)', value: '156', change: '+24%', icon: Clock },
     { label: 'Active Collaborations', value: '23', change: '+5%', icon: MessageSquare }
   ];
@@ -81,11 +78,78 @@ const Dashboard = () => {
     navigate(`/document/${documentId}`);
   };
 
-  const handleUpload = () => {
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handleUpload(file);
+  };
+
+  const handleUpload = (file: File) => {
+    if (!user) {
+      toast({ title: "Not authenticated", description: "You must be logged in to upload files.", variant: "destructive" });
+      return;
+    }
+
+    const toastId = "upload-toast";
     toast({
-      title: "Upload Feature",
-      description: "Document upload functionality would be implemented here",
+      id: toastId,
+      title: "Uploading...",
+      description: `Your document "${file.name}" is being uploaded.`,
     });
+
+    const storageRef = ref(storage, `documents/${user.uid}/${Date.now()}-${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on('state_changed',
+      (snapshot) => {
+        // Optional: handle progress
+      },
+      (error) => {
+        toast({
+          id: toastId,
+          title: "Upload failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
+          await addDoc(collection(db, 'documents'), {
+            uid: user.uid,
+            title: file.name,
+            type: file.type || 'unknown',
+            size: file.size,
+            downloadUrl: downloadURL,
+            uploadedAt: serverTimestamp(),
+            status: 'processing',
+            aiScore: null,
+            insights: 0,
+          });
+          toast({
+            id: toastId,
+            title: "Upload successful!",
+            description: "Your document is now being processed by the AI.",
+          });
+        });
+      }
+    );
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    navigate('/login');
   };
 
   return (
@@ -108,9 +172,9 @@ const Dashboard = () => {
               </div>
               
               <nav className="hidden md:flex items-center space-x-6">
-                <Button variant="ghost" className="font-medium">Dashboard</Button>
-                <Button variant="ghost" onClick={() => navigate('/chat')}>Chat</Button>
-                <Button variant="ghost">Analytics</Button>
+                <Button variant="ghost" className="font-medium" asChild><Link to="/dashboard">Dashboard</Link></Button>
+                <Button variant="ghost" asChild><Link to="/chat">Chat</Link></Button>
+                <Button variant="ghost" asChild><Link to="/analytics">Analytics</Link></Button>
               </nav>
             </div>
 
@@ -121,15 +185,27 @@ const Dashboard = () => {
               <Button variant="ghost" size="icon">
                 <Settings className="h-4 w-4" />
               </Button>
-              <div className="flex items-center space-x-3 pl-4 border-l border-border">
-                <div className="w-8 h-8 rounded-full bg-metro-blue/20 flex items-center justify-center">
-                  <User className="h-4 w-4 text-metro-blue" />
-                </div>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-medium">Arjun Nair</p>
-                  <p className="text-xs text-muted-foreground">EMP001</p>
-                </div>
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <div className="flex items-center space-x-3 pl-4 border-l border-border cursor-pointer">
+                    <div className="w-8 h-8 rounded-full bg-metro-blue/20 flex items-center justify-center">
+                      <User className="h-4 w-4 text-metro-blue" />
+                    </div>
+                    <div className="hidden sm:block">
+                      <p className="text-sm font-medium">{user?.displayName || user?.email}</p>
+                      <p className="text-xs text-muted-foreground">{user?.email}</p>
+                    </div>
+                  </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -144,7 +220,7 @@ const Dashboard = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="space-y-2"
         >
-          <h2 className="text-3xl font-bold">Welcome back, Arjun</h2>
+          <h2 className="text-3xl font-bold">Welcome back, {user?.displayName || 'User'}</h2>
           <p className="text-muted-foreground">Here's what's happening with your documents today.</p>
         </motion.div>
 
@@ -186,7 +262,8 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
-          <Card className="p-8 glass-effect border-2 border-dashed border-primary/30 text-center hover:border-primary/50 transition-colors">
+          <Card className="p-8 glass-effect border-2 border-dashed border-primary/30 text-center hover:border-primary/50 transition-colors cursor-pointer" onClick={handleUploadClick}>
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
             <motion.div
               whileHover={{ scale: 1.05 }}
               className="space-y-4"
@@ -200,7 +277,7 @@ const Dashboard = () => {
                   Drag and drop your files here, or click to browse
                 </p>
               </div>
-              <Button variant="metro" size="lg" onClick={handleUpload}>
+              <Button variant="metro" size="lg">
                 Choose Files
               </Button>
             </motion.div>
@@ -229,67 +306,77 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {recentDocuments.map((doc, index) => (
-              <motion.div
-                key={doc.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.5 + index * 0.1 }}
-                whileHover={{ scale: 1.02 }}
-                className="card-glow cursor-pointer"
-                onClick={() => handleDocumentClick(doc.id)}
-              >
-                <Card className="p-6 bg-card-elevated border border-border/50">
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-lg mb-2">{doc.title}</h4>
-                        <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                          <span className="flex items-center space-x-1">
-                            <FileText className="h-3 w-3" />
-                            <span>{doc.type}</span>
-                          </span>
-                          <span className="flex items-center space-x-1">
-                            <Download className="h-3 w-3" />
-                            <span>{doc.size}</span>
-                          </span>
-                          <span className="flex items-center space-x-1">
-                            <Clock className="h-3 w-3" />
-                            <span>{doc.uploadedAt}</span>
-                          </span>
+          {loading ? (
+             <div className="flex justify-center items-center h-40">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full"
+                />
+             </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {documents.filter(doc => doc.title.toLowerCase().includes(searchQuery.toLowerCase())).map((doc, index) => (
+                <motion.div
+                  key={doc.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.5 + index * 0.1 }}
+                  whileHover={{ scale: 1.02 }}
+                  className="card-glow cursor-pointer"
+                  onClick={() => handleDocumentClick(doc.id)}
+                >
+                  <Card className="p-6 bg-card-elevated border border-border/50">
+                    <div className="space-y-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-lg mb-2">{doc.title}</h4>
+                          <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                            <span className="flex items-center space-x-1">
+                              <FileText className="h-3 w-3" />
+                              <span>{doc.type}</span>
+                            </span>
+                            <span className="flex items-center space-x-1">
+                              <Download className="h-3 w-3" />
+                              <span>{formatFileSize(doc.size)}</span>
+                            </span>
+                            <span className="flex items-center space-x-1">
+                              <Clock className="h-3 w-3" />
+                              <span>{doc.uploadedAt ? formatDistanceToNow(doc.uploadedAt.toDate()) : 'N/A'} ago</span>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end space-y-2">
+                          <Badge
+                            variant={doc.status === 'analyzed' ? 'default' : 'secondary'}
+                            className={doc.status === 'analyzed' ? 'bg-success text-success-foreground' : ''}
+                          >
+                            {doc.status}
+                          </Badge>
+                          {doc.aiScore && (
+                            <div className="flex items-center space-x-1">
+                              <Zap className="h-3 w-3 text-primary" />
+                              <span className="text-xs font-medium">{doc.aiScore}%</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="flex flex-col items-end space-y-2">
-                        <Badge 
-                          variant={doc.status === 'analyzed' ? 'default' : 'secondary'}
-                          className={doc.status === 'analyzed' ? 'bg-success text-success-foreground' : ''}
-                        >
-                          {doc.status}
-                        </Badge>
-                        {doc.aiScore && (
-                          <div className="flex items-center space-x-1">
-                            <Zap className="h-3 w-3 text-primary" />
-                            <span className="text-xs font-medium">{doc.aiScore}%</span>
-                          </div>
-                        )}
+
+                      <div className="flex items-center justify-between pt-4 border-t border-border/50">
+                        <span className="text-sm text-muted-foreground">
+                          {doc.insights && doc.insights > 0 ? `${doc.insights} AI insights available` : 'No insights yet'}
+                        </span>
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-3 w-3 mr-2" />
+                          View Details
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                      <span className="text-sm text-muted-foreground">
-                        {doc.insights} AI insights available
-                      </span>
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-3 w-3 mr-2" />
-                        View Details
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </motion.div>
       </main>
     </div>
