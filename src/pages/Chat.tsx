@@ -19,55 +19,26 @@ import {
   Phone,
   Video
 } from 'lucide-react';
-
-interface Message {
-  id: string;
-  sender: string;
-  content: string;
-  timestamp: Date;
-  isBot?: boolean;
-  isSystem?: boolean;
-}
+import { db } from '@/lib/firebase';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { useAuth } from '@/hooks/useAuth';
+import { Message } from '@/types';
 
 const Chat = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      sender: 'System',
-      content: 'Welcome to KMRL Synapse collaboration hub! Team members and AI assistant are online.',
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-      isSystem: true
-    },
-    {
-      id: '2',
-      sender: 'Priya Sharma',
-      content: 'Hey team! I just reviewed the metro extension proposal. The budget allocation looks solid.',
-      timestamp: new Date(Date.now() - 90 * 60 * 1000)
-    },
-    {
-      id: '3',
-      sender: 'Rajesh Kumar',
-      content: 'Agreed! The 36-month timeline seems realistic. Should we discuss the land acquisition challenges?',
-      timestamp: new Date(Date.now() - 85 * 60 * 1000)
-    },
-    {
-      id: '4',
-      sender: 'AI Assistant',
-      content: 'Based on the document analysis, I identified potential delays in land acquisition. Would you like me to generate a risk assessment report?',
-      timestamp: new Date(Date.now() - 80 * 60 * 1000),
-      isBot: true
-    },
-    {
-      id: '5',
-      sender: 'Arjun Nair',
-      content: 'That would be helpful! Also, can someone confirm the environmental compliance requirements?',
-      timestamp: new Date(Date.now() - 75 * 60 * 1000)
-    }
-  ]);
-
+  const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'messages'), orderBy('timestamp'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+      setMessages(msgs);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -77,38 +48,26 @@ const Chat = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    if (!message.trim() || !user) return;
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      sender: 'Arjun Nair',
+    await addDoc(collection(db, 'messages'), {
+      sender: user.displayName || user.email,
+      senderId: user.uid,
       content: message,
-      timestamp: new Date()
-    };
+      timestamp: serverTimestamp(),
+    });
 
-    setMessages(prev => [...prev, newMessage]);
     setMessage('');
-
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: 'AI Assistant',
-        content: 'I understand your query. Let me analyze the relevant documents and provide insights shortly.',
-        timestamp: new Date(),
-        isBot: true
-      };
-      setMessages(prev => [...prev, aiResponse]);
-    }, 1000);
   };
 
-  const formatTime = (date: Date) => {
+  const formatTime = (timestamp: Timestamp | null) => {
+    if (!timestamp) return '';
     return new Intl.DateTimeFormat('en-US', {
       hour: '2-digit',
       minute: '2-digit'
-    }).format(date);
+    }).format(timestamp.toDate());
   };
 
   const onlineUsers = [
@@ -253,7 +212,7 @@ const Chat = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.1 }}
                 className={`flex items-start space-x-3 ${
-                  msg.sender === 'Arjun Nair' ? 'flex-row-reverse space-x-reverse' : ''
+                  msg.senderId === user?.uid ? 'flex-row-reverse space-x-reverse' : ''
                 }`}
               >
                 {/* Avatar */}
@@ -263,7 +222,7 @@ const Chat = () => {
                       ? 'bg-primary text-primary-foreground' 
                       : msg.isSystem 
                       ? 'bg-muted text-muted-foreground'
-                      : msg.sender === 'Arjun Nair'
+                      : msg.senderId === user?.uid
                       ? 'bg-metro-blue text-primary-foreground'
                       : 'bg-muted'
                   }>
@@ -279,14 +238,14 @@ const Chat = () => {
 
                 {/* Message Content */}
                 <div className={`flex-1 max-w-lg ${
-                  msg.sender === 'Arjun Nair' ? 'text-right' : ''
+                  msg.senderId === user?.uid ? 'text-right' : ''
                 }`}>
                   <div className={`rounded-lg p-4 ${
                     msg.isSystem
                       ? 'bg-muted/50 border border-border text-center italic'
                       : msg.isBot
                       ? 'bg-primary/10 border border-primary/20'
-                      : msg.sender === 'Arjun Nair'
+                      : msg.senderId === user?.uid
                       ? 'metro-gradient text-primary-foreground'
                       : 'bg-card-elevated border border-border/50'
                   }`}>
