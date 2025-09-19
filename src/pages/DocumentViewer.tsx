@@ -21,21 +21,23 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { Document, AiInsights } from '@/types';
-import { formatDistanceToNow } from 'date-fns';
+import { doc, getDoc } from 'firebase/firestore';
+import { Document as DocumentType, AiInsights } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
+import { formatDistanceToNow } from 'date-fns';
 
 const DocumentViewer = () => {
   const { documentId } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [document, setDocument] = useState<Document | null>(null);
-  const [aiInsights, setAiInsights] = useState<AiInsights | null>(null);
+  const [document, setDocument] = useState<DocumentType | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!documentId) return;
+    if (!documentId) {
+      setLoading(false);
+      return;
+    }
 
     const fetchDocument = async () => {
       setLoading(true);
@@ -43,7 +45,7 @@ const DocumentViewer = () => {
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
-        const docData = { id: docSnap.id, ...docSnap.data() } as Document;
+        const docData = { id: docSnap.id, ...docSnap.data() } as DocumentType;
         setDocument(docData);
 
         if (docData.downloadUrl) {
@@ -53,15 +55,11 @@ const DocumentViewer = () => {
                 setDocument(prevDoc => prevDoc ? { ...prevDoc, content: text } : null);
             } catch (error) {
                 console.error("Error fetching document content:", error);
+                setDocument(prevDoc => prevDoc ? { ...prevDoc, content: "Could not load document content." } : null);
             }
         }
-
-        const insightsRef = collection(db, 'documents', documentId, 'insights');
-        const insightsSnap = await getDocs(insightsRef);
-        if (!insightsSnap.empty) {
-          const insightsData = insightsSnap.docs[0].data() as AiInsights;
-          setAiInsights(insightsData);
-        }
+      } else {
+        console.log("No such document!");
       }
       setLoading(false);
     };
@@ -70,7 +68,7 @@ const DocumentViewer = () => {
   }, [documentId]);
 
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -100,6 +98,16 @@ const DocumentViewer = () => {
       </div>
     );
   }
+
+  // Placeholder for AI Insights as it's not in the main document now
+  const aiInsights: AiInsights | null = document.aiSummary ? {
+    summary: document.aiSummary,
+    keyPoints: ["Point 1 from AI", "Point 2 from AI"],
+    actionItems: [],
+    alerts: [],
+    confidence: document.aiScore || 0,
+    processingTime: "N/A"
+  } : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -137,21 +145,25 @@ const DocumentViewer = () => {
             </div>
 
             <div className="flex items-center space-x-3">
-              <Badge variant="default" className={document.status === 'analyzed' ? 'bg-success text-success-foreground' : ''}>
+              <Badge variant={document.status === 'analyzed' ? 'default' : 'secondary'} className={document.status === 'analyzed' ? 'bg-success text-success-foreground' : ''}>
                 <CheckCircle className="h-3 w-3 mr-1" />
                 {document.status}
               </Badge>
-              <div className="flex items-center space-x-1 text-sm">
-                <Zap className="h-4 w-4 text-primary" />
-                <span className="font-medium">{document.aiScore}%</span>
-              </div>
+              {document.aiScore && (
+                <div className="flex items-center space-x-1 text-sm">
+                  <Zap className="h-4 w-4 text-primary" />
+                  <span className="font-medium">{document.aiScore}%</span>
+                </div>
+              )}
               <Button variant="outline" size="sm">
                 <Share2 className="h-3 w-3 mr-2" />
                 Share
               </Button>
-              <Button variant="ghost" size="sm">
-                <Download className="h-3 w-3 mr-2" />
-                Download
+              <Button variant="ghost" size="sm" asChild>
+                <a href={document.downloadUrl} target="_blank" rel="noopener noreferrer">
+                  <Download className="h-3 w-3 mr-2" />
+                  Download
+                </a>
               </Button>
             </div>
           </div>
@@ -186,7 +198,6 @@ const DocumentViewer = () => {
           >
             {aiInsights ? (
               <>
-                {/* AI Analysis Header */}
                 <Card className="p-6 glass-effect border border-primary/20">
                   <div className="flex items-center space-x-3 mb-4">
                     <div className="w-10 h-10 rounded-lg metro-gradient flex items-center justify-center">
@@ -213,7 +224,6 @@ const DocumentViewer = () => {
                   </div>
                 </Card>
 
-                {/* AI Insights Tabs */}
                 <Card className="glass-effect border border-border/50">
                   <Tabs defaultValue="summary" className="p-6">
                     <TabsList className="grid w-full grid-cols-3">
@@ -248,67 +258,15 @@ const DocumentViewer = () => {
                         </ul>
                       </div>
                     </TabsContent>
-
-                    <TabsContent value="actions" className="space-y-4 mt-6">
-                      <h4 className="font-semibold">Action Items</h4>
-                      <div className="space-y-3">
-                        {aiInsights.actionItems.map((action, index) => (
-                          <motion.div
-                            key={index}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
-                            className="p-3 rounded-lg border border-border/50 bg-card-elevated/50"
-                          >
-                            <div className="flex items-start justify-between mb-2">
-                              <Badge
-                                variant={action.priority === 'high' ? 'destructive' : 'secondary'}
-                                className="text-xs"
-                              >
-                                {action.priority}
-                              </Badge>
-                            </div>
-                            <p className="text-sm font-medium mb-1">{action.item}</p>
-                            <p className="text-xs text-muted-foreground">{action.department}</p>
-                          </motion.div>
-                        ))}
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="alerts" className="space-y-4 mt-6">
-                      <h4 className="font-semibold">Alerts & Notifications</h4>
-                      <div className="space-y-3">
-                        {aiInsights.alerts.map((alert, index) => (
-                          <motion.div
-                            key={index}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
-                            className={`p-3 rounded-lg border ${
-                              alert.type === 'warning'
-                                ? 'border-warning/50 bg-warning/5'
-                                : 'border-primary/50 bg-primary/5'
-                            }`}
-                          >
-                            <div className="flex items-start space-x-2">
-                              {alert.type === 'warning' ? (
-                                <AlertTriangle className="h-4 w-4 text-warning mt-0.5" />
-                              ) : (
-                                <Eye className="h-4 w-4 text-primary mt-0.5" />
-                              )}
-                              <p className="text-sm">{alert.message}</p>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                    </TabsContent>
                   </Tabs>
                 </Card>
               </>
             ) : (
-              <Card className="p-8 glass-effect border border-border/50 text-center">
-                <p className="text-muted-foreground">AI insights are being generated...</p>
-              </Card>
+                <Card className="p-8 glass-effect border border-border/50 text-center">
+                    <p className="text-muted-foreground">
+                        {document.status === 'processing' ? 'AI insights are being generated...' : 'No AI insights available for this document.'}
+                    </p>
+                </Card>
             )}
 
             {/* Quick Actions */}
