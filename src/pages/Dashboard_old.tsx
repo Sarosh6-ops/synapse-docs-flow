@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { 
-  FileText, 
-  Upload, 
-  Search, 
-  Clock, 
-  TrendingUp, 
+import {
+  FileText,
+  Upload,
+  Search,
+  Clock,
+  TrendingUp,
   MessageSquare,
   User,
   Bell,
@@ -69,7 +69,7 @@ const Dashboard = () => {
 
   const stats = [
     { label: 'Documents Analyzed', value: documents.length, change: '+12%', icon: FileText },
-    { label: 'AI Insights Generated', value: '3,891', change: '+8%', icon: Zap },
+    { label: 'AI Insights Generated', value: documents.reduce((acc, doc) => acc + (doc.insights || 0), 0), change: '+8%', icon: Zap },
     { label: 'Time Saved (Hours)', value: '156', change: '+24%', icon: Clock },
     { label: 'Active Collaborations', value: '23', change: '+5%', icon: MessageSquare }
   ];
@@ -170,7 +170,7 @@ const Dashboard = () => {
                 </div>
                 <h1 className="text-xl font-bold gradient-text">KMRL Synapse</h1>
               </div>
-              
+
               <nav className="hidden md:flex items-center space-x-6">
                 <Button variant="ghost" className="font-medium" asChild><Link to="/dashboard">Dashboard</Link></Button>
                 <Button variant="ghost" asChild><Link to="/chat">Chat</Link></Button>
