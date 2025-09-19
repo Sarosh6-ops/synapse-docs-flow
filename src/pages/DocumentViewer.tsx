@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -20,88 +20,86 @@ import {
   MessageSquare,
   TrendingUp
 } from 'lucide-react';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { Document, AiInsights } from '@/types';
+import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '@/hooks/useAuth';
 
 const DocumentViewer = () => {
-  const { documentId } = useParams();
+  const { documentId } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [document, setDocument] = useState<Document | null>(null);
+  const [aiInsights, setAiInsights] = useState<AiInsights | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Mock document data
-  const document = {
-    id: documentId,
-    title: 'Metro Line Extension Proposal',
-    type: 'PDF',
-    size: '2.4 MB',
-    uploadedAt: '2 hours ago',
-    uploadedBy: 'Arjun Nair',
-    status: 'analyzed',
-    aiScore: 95,
-    content: `
-      KOCHI METRO RAIL LIMITED
-      
-      METRO LINE EXTENSION PROPOSAL
-      Phase 3 Development Plan
-      
-      Executive Summary:
-      This document outlines the proposed extension of the Kochi Metro Rail system to connect additional areas of the city, improving public transportation coverage and reducing traffic congestion.
-      
-      Key Objectives:
-      1. Extend Line 1 to cover Kakkanad IT Hub
-      2. Add 8 new stations with modern facilities
-      3. Implement smart ticketing across all stations
-      4. Ensure environmental compliance
-      
-      Budget Allocation:
-      Total Project Cost: ₹2,450 Crores
-      Central Government: ₹1,200 Crores (49%)
-      State Government: ₹850 Crores (35%)
-      KMRL Internal: ₹400 Crores (16%)
-      
-      Timeline:
-      Phase 1: Land acquisition (6 months)
-      Phase 2: Construction (24 months)
-      Phase 3: Testing & Commissioning (6 months)
-      Total Duration: 36 months
-    `
-  };
+  useEffect(() => {
+    if (!documentId) return;
 
-  const aiInsights = {
-    summary: "This document presents a comprehensive metro line extension proposal with clear financial planning and realistic timelines. The project shows strong potential for improving urban connectivity.",
-    keyPoints: [
-      "₹2,450 Crores total budget allocation with diversified funding sources",
-      "Strategic focus on Kakkanad IT Hub connectivity to boost tech sector accessibility",
-      "36-month timeline includes proper phases for land acquisition and testing",
-      "Environmental compliance measures integrated into planning phase"
-    ],
-    actionItems: [
-      {
-        priority: 'high',
-        item: 'Secure land acquisition approvals within 6 months',
-        department: 'Legal & Planning'
-      },
-      {
-        priority: 'medium',
-        item: 'Finalize environmental impact assessment',
-        department: 'Environmental Affairs'
-      },
-      {
-        priority: 'high',
-        item: 'Confirm funding agreements with central and state governments',
-        department: 'Finance'
+    const fetchDocument = async () => {
+      setLoading(true);
+      const docRef = doc(db, 'documents', documentId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const docData = { id: docSnap.id, ...docSnap.data() } as Document;
+        setDocument(docData);
+
+        if (docData.downloadUrl) {
+            try {
+                const response = await fetch(docData.downloadUrl);
+                const text = await response.text();
+                setDocument(prevDoc => prevDoc ? { ...prevDoc, content: text } : null);
+            } catch (error) {
+                console.error("Error fetching document content:", error);
+            }
+        }
+
+        const insightsRef = collection(db, 'documents', documentId, 'insights');
+        const insightsSnap = await getDocs(insightsRef);
+        if (!insightsSnap.empty) {
+          const insightsData = insightsSnap.docs[0].data() as AiInsights;
+          setAiInsights(insightsData);
+        }
       }
-    ],
-    alerts: [
-      {
-        type: 'warning',
-        message: 'Land acquisition timeline may face delays due to regulatory approvals'
-      },
-      {
-        type: 'info',
-        message: 'Environmental clearance required before Phase 2 commencement'
-      }
-    ],
-    confidence: 95,
-    processingTime: '0.8 seconds'
-  };
+      setLoading(false);
+    };
+
+    fetchDocument();
+  }, [documentId]);
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full"
+        />
+      </div>
+    );
+  }
+
+  if (!document) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-center">
+        <div>
+          <h2 className="text-2xl font-bold">Document not found</h2>
+          <p className="text-muted-foreground">The document you are looking for does not exist.</p>
+          <Button onClick={() => navigate('/dashboard')} className="mt-4">Go to Dashboard</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -125,23 +123,23 @@ const DocumentViewer = () => {
                     <FileText className="h-3 w-3" />
                     <span>{document.type}</span>
                   </span>
-                  <span>{document.size}</span>
+                  <span>{formatFileSize(document.size)}</span>
                   <span className="flex items-center space-x-1">
                     <User className="h-3 w-3" />
-                    <span>by {document.uploadedBy}</span>
+                    <span>by {user?.displayName || 'Unknown'}</span>
                   </span>
                   <span className="flex items-center space-x-1">
                     <Clock className="h-3 w-3" />
-                    <span>{document.uploadedAt}</span>
+                    <span>{document.uploadedAt ? formatDistanceToNow(document.uploadedAt.toDate()) : 'N/A'} ago</span>
                   </span>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center space-x-3">
-              <Badge variant="default" className="bg-success text-success-foreground">
+              <Badge variant="default" className={document.status === 'analyzed' ? 'bg-success text-success-foreground' : ''}>
                 <CheckCircle className="h-3 w-3 mr-1" />
-                Analyzed
+                {document.status}
               </Badge>
               <div className="flex items-center space-x-1 text-sm">
                 <Zap className="h-4 w-4 text-primary" />
@@ -173,7 +171,7 @@ const DocumentViewer = () => {
             <Card className="p-8 glass-effect border border-border/50">
               <div className="prose prose-invert max-w-none">
                 <div className="whitespace-pre-line text-foreground leading-relaxed">
-                  {document.content}
+                  {document.content || "Loading document content..."}
                 </div>
               </div>
             </Card>
@@ -186,124 +184,132 @@ const DocumentViewer = () => {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="space-y-6"
           >
-            {/* AI Analysis Header */}
-            <Card className="p-6 glass-effect border border-primary/20">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-10 h-10 rounded-lg metro-gradient flex items-center justify-center">
-                  <Brain className="h-5 w-5 text-primary-foreground" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg">AI Analysis</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Processed in {aiInsights.processingTime}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <div className="flex-1 bg-secondary rounded-full h-2">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${aiInsights.confidence}%` }}
-                    transition={{ duration: 1, delay: 0.5 }}
-                    className="h-full metro-gradient rounded-full"
-                  />
-                </div>
-                <span className="text-sm font-medium">{aiInsights.confidence}%</span>
-              </div>
-            </Card>
-
-            {/* AI Insights Tabs */}
-            <Card className="glass-effect border border-border/50">
-              <Tabs defaultValue="summary" className="p-6">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="summary">Summary</TabsTrigger>
-                  <TabsTrigger value="actions">Actions</TabsTrigger>
-                  <TabsTrigger value="alerts">Alerts</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="summary" className="space-y-4 mt-6">
-                  <div>
-                    <h4 className="font-semibold mb-2">Executive Summary</h4>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {aiInsights.summary}
-                    </p>
+            {aiInsights ? (
+              <>
+                {/* AI Analysis Header */}
+                <Card className="p-6 glass-effect border border-primary/20">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg metro-gradient flex items-center justify-center">
+                      <Brain className="h-5 w-5 text-primary-foreground" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg">AI Analysis</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Processed in {aiInsights.processingTime}
+                      </p>
+                    </div>
                   </div>
 
-                  <div>
-                    <h4 className="font-semibold mb-3">Key Points</h4>
-                    <ul className="space-y-2">
-                      {aiInsights.keyPoints.map((point, index) => (
-                        <motion.li
-                          key={index}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
-                          className="flex items-start space-x-2 text-sm"
-                        >
-                          <CheckCircle className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
-                          <span>{point}</span>
-                        </motion.li>
-                      ))}
-                    </ul>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="actions" className="space-y-4 mt-6">
-                  <h4 className="font-semibold">Action Items</h4>
-                  <div className="space-y-3">
-                    {aiInsights.actionItems.map((action, index) => (
+                  <div className="flex items-center space-x-2">
+                    <div className="flex-1 bg-secondary rounded-full h-2">
                       <motion.div
-                        key={index}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
-                        className="p-3 rounded-lg border border-border/50 bg-card-elevated/50"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <Badge 
-                            variant={action.priority === 'high' ? 'destructive' : 'secondary'}
-                            className="text-xs"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${aiInsights.confidence}%` }}
+                        transition={{ duration: 1, delay: 0.5 }}
+                        className="h-full metro-gradient rounded-full"
+                      />
+                    </div>
+                    <span className="text-sm font-medium">{aiInsights.confidence}%</span>
+                  </div>
+                </Card>
+
+                {/* AI Insights Tabs */}
+                <Card className="glass-effect border border-border/50">
+                  <Tabs defaultValue="summary" className="p-6">
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="summary">Summary</TabsTrigger>
+                      <TabsTrigger value="actions">Actions</TabsTrigger>
+                      <TabsTrigger value="alerts">Alerts</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="summary" className="space-y-4 mt-6">
+                      <div>
+                        <h4 className="font-semibold mb-2">Executive Summary</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {aiInsights.summary}
+                        </p>
+                      </div>
+
+                      <div>
+                        <h4 className="font-semibold mb-3">Key Points</h4>
+                        <ul className="space-y-2">
+                          {aiInsights.keyPoints.map((point, index) => (
+                            <motion.li
+                              key={index}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
+                              className="flex items-start space-x-2 text-sm"
+                            >
+                              <CheckCircle className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                              <span>{point}</span>
+                            </motion.li>
+                          ))}
+                        </ul>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="actions" className="space-y-4 mt-6">
+                      <h4 className="font-semibold">Action Items</h4>
+                      <div className="space-y-3">
+                        {aiInsights.actionItems.map((action, index) => (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
+                            className="p-3 rounded-lg border border-border/50 bg-card-elevated/50"
                           >
-                            {action.priority}
-                          </Badge>
-                        </div>
-                        <p className="text-sm font-medium mb-1">{action.item}</p>
-                        <p className="text-xs text-muted-foreground">{action.department}</p>
-                      </motion.div>
-                    ))}
-                  </div>
-                </TabsContent>
+                            <div className="flex items-start justify-between mb-2">
+                              <Badge
+                                variant={action.priority === 'high' ? 'destructive' : 'secondary'}
+                                className="text-xs"
+                              >
+                                {action.priority}
+                              </Badge>
+                            </div>
+                            <p className="text-sm font-medium mb-1">{action.item}</p>
+                            <p className="text-xs text-muted-foreground">{action.department}</p>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </TabsContent>
 
-                <TabsContent value="alerts" className="space-y-4 mt-6">
-                  <h4 className="font-semibold">Alerts & Notifications</h4>
-                  <div className="space-y-3">
-                    {aiInsights.alerts.map((alert, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
-                        className={`p-3 rounded-lg border ${
-                          alert.type === 'warning' 
-                            ? 'border-warning/50 bg-warning/5' 
-                            : 'border-primary/50 bg-primary/5'
-                        }`}
-                      >
-                        <div className="flex items-start space-x-2">
-                          {alert.type === 'warning' ? (
-                            <AlertTriangle className="h-4 w-4 text-warning mt-0.5" />
-                          ) : (
-                            <Eye className="h-4 w-4 text-primary mt-0.5" />
-                          )}
-                          <p className="text-sm">{alert.message}</p>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </Card>
+                    <TabsContent value="alerts" className="space-y-4 mt-6">
+                      <h4 className="font-semibold">Alerts & Notifications</h4>
+                      <div className="space-y-3">
+                        {aiInsights.alerts.map((alert, index) => (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.3, delay: 0.8 + index * 0.1 }}
+                            className={`p-3 rounded-lg border ${
+                              alert.type === 'warning'
+                                ? 'border-warning/50 bg-warning/5'
+                                : 'border-primary/50 bg-primary/5'
+                            }`}
+                          >
+                            <div className="flex items-start space-x-2">
+                              {alert.type === 'warning' ? (
+                                <AlertTriangle className="h-4 w-4 text-warning mt-0.5" />
+                              ) : (
+                                <Eye className="h-4 w-4 text-primary mt-0.5" />
+                              )}
+                              <p className="text-sm">{alert.message}</p>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </Card>
+              </>
+            ) : (
+              <Card className="p-8 glass-effect border border-border/50 text-center">
+                <p className="text-muted-foreground">AI insights are being generated...</p>
+              </Card>
+            )}
 
             {/* Quick Actions */}
             <Card className="p-6 glass-effect border border-border/50">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -6,26 +6,64 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Train, Zap, Shield, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { auth, googleProvider } from '@/lib/firebase';
+import { signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 
 const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        navigate('/dashboard');
+      }
+    });
+    return () => unsubscribe();
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Simulate login process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    toast({
-      title: "Welcome to KMRL Synapse",
-      description: "Successfully logged in as Arjun Nair",
-    });
-    
-    navigate('/dashboard');
-    setIsLoading(false);
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      toast({
+        title: "Welcome to KMRL Synapse",
+        description: `Successfully logged in as ${userCredential.user.email}`,
+      });
+      navigate('/dashboard');
+    } catch (error: any) {
+      toast({
+        title: "Login Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      toast({
+        title: "Welcome to KMRL Synapse",
+        description: `Successfully logged in as ${result.user.displayName}`,
+      });
+      navigate('/dashboard');
+    } catch (error: any) {
+      toast({
+        title: "Google Sign-In Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -138,11 +176,12 @@ const Login = () => {
 
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Employee ID</label>
+                    <label className="text-sm font-medium">Email</label>
                     <Input 
-                      type="text" 
-                      placeholder="Enter your employee ID"
-                      defaultValue="EMP001"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                       className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors"
                     />
                   </div>
@@ -152,7 +191,8 @@ const Login = () => {
                     <Input 
                       type="password" 
                       placeholder="Enter your password"
-                      defaultValue="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
                       className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors"
                     />
                   </div>
@@ -175,6 +215,27 @@ const Login = () => {
                     )}
                   </Button>
                 </form>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or continue with
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-full"
+                  onClick={handleGoogleSignIn}
+                  disabled={isLoading}
+                >
+                  Sign in with Google
+                </Button>
 
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground">
