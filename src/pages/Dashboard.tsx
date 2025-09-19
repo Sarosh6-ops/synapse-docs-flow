@@ -69,7 +69,7 @@ const Dashboard = () => {
 
   const stats = [
     { label: 'Documents Analyzed', value: documents.length, change: '+12%', icon: FileText },
-    { label: 'AI Insights Generated', value: '3,891', change: '+8%', icon: Zap },
+    { label: 'AI Insights Generated', value: documents.reduce((acc, doc) => acc + (doc.insights || 0), 0), change: '+8%', icon: Zap },
     { label: 'Time Saved (Hours)', value: '156', change: '+24%', icon: Clock },
     { label: 'Active Collaborations', value: '23', change: '+5%', icon: MessageSquare }
   ];

@@ -46,18 +46,22 @@ const DocumentViewer = () => {
 
       if (docSnap.exists()) {
         const docData = { id: docSnap.id, ...docSnap.data() } as DocumentType;
-        setDocument(docData);
 
         if (docData.downloadUrl) {
             try {
                 const response = await fetch(docData.downloadUrl);
-                const text = await response.text();
-                setDocument(prevDoc => prevDoc ? { ...prevDoc, content: text } : null);
+                if (response.ok) {
+                    const text = await response.text();
+                    docData.content = text;
+                } else {
+                    docData.content = "Could not load document content.";
+                }
             } catch (error) {
                 console.error("Error fetching document content:", error);
-                setDocument(prevDoc => prevDoc ? { ...prevDoc, content: "Could not load document content." } : null);
+                docData.content = "Could not load document content.";
             }
         }
+        setDocument(docData);
       } else {
         console.log("No such document!");
       }
