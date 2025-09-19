@@ -1,6 +1,3 @@
-Of course. A great README is crucial for a hackathon. It's the first thing judges see and tells the story of your project. Here is a professional and comprehensive README.md file tailored for your "KMRL Synapse" project.
-
-You can copy and paste this directly into a README.md file in your project's root directory.
 
 KMRL Synapse 🚆✨
 Intelligent Document Management for Modern Transit Systems
