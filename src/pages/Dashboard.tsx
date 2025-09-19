@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Mock data for documents
   const recentDocuments = [
@@ -82,14 +83,29 @@ const Dashboard = () => {
   };
 
   const handleUpload = () => {
-    toast({
-      title: "Upload Feature",
-      description: "Document upload functionality would be implemented here",
-    });
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      toast({
+        title: "File Selected",
+        description: `You have selected ${file.name}.`,
+      });
+      // Here you would typically start the upload process
+    }
   };
 
   return (
     <div className="min-h-screen bg-background">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        className="hidden"
+        accept=".pdf,.docx,.jpg,.png"
+      />
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
@@ -110,7 +126,7 @@ const Dashboard = () => {
               <nav className="hidden md:flex items-center space-x-6">
                 <Button variant="ghost" className="font-medium">Dashboard</Button>
                 <Button variant="ghost" onClick={() => navigate('/chat')}>Chat</Button>
-                <Button variant="ghost">Analytics</Button>
+                <Button variant="ghost" onClick={() => navigate('/analytics')}>Analytics</Button>
               </nav>
             </div>
 

@@ -20,10 +20,12 @@ import {
   MessageSquare,
   TrendingUp
 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const DocumentViewer = () => {
   const { documentId } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   // Mock document data
   const document = {
@@ -147,11 +149,11 @@ const DocumentViewer = () => {
                 <Zap className="h-4 w-4 text-primary" />
                 <span className="font-medium">{document.aiScore}%</span>
               </div>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => toast({ title: 'Share', description: 'Share functionality would be implemented here.' })}>
                 <Share2 className="h-3 w-3 mr-2" />
                 Share
               </Button>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => toast({ title: 'Download', description: 'Download functionality would be implemented here.' })}>
                 <Download className="h-3 w-3 mr-2" />
                 Download
               </Button>
@@ -309,15 +311,15 @@ const DocumentViewer = () => {
             <Card className="p-6 glass-effect border border-border/50">
               <h4 className="font-semibold mb-4">Quick Actions</h4>
               <div className="space-y-3">
-                <Button variant="outline" className="w-full justify-start" size="sm">
+                <Button variant="outline" className="w-full justify-start" size="sm" onClick={() => toast({ title: 'Discuss in Chat', description: 'Chat functionality would be implemented here.' })}>
                   <MessageSquare className="h-4 w-4 mr-2" />
                   Discuss in Chat
                 </Button>
-                <Button variant="outline" className="w-full justify-start" size="sm">
+                <Button variant="outline" className="w-full justify-start" size="sm" onClick={() => toast({ title: 'Generate Report', description: 'Report generation functionality would be implemented here.' })}>
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Generate Report
                 </Button>
-                <Button variant="outline" className="w-full justify-start" size="sm">
+                <Button variant="outline" className="w-full justify-start" size="sm" onClick={() => toast({ title: 'Share with Team', description: 'Sharing functionality would be implemented here.' })}>
                   <Share2 className="h-4 w-4 mr-2" />
                   Share with Team
                 </Button>

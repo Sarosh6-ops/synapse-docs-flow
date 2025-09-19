@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import DocumentViewer from "./pages/DocumentViewer";
 import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
+import Analytics from "./pages/Analytics";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,8 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/document/:documentId" element={<DocumentViewer />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/upload" element={<Dashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
