@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { 
-  FileText, 
-  Upload, 
-  Search, 
-  Clock, 
-  TrendingUp, 
+import {
+  FileText,
+  Upload,
+  Search,
+  Clock,
+  TrendingUp,
   MessageSquare,
   User,
   Bell,
@@ -170,7 +170,7 @@ const Dashboard = () => {
                 </div>
                 <h1 className="text-xl font-bold gradient-text">KMRL Synapse</h1>
               </div>
-              
+
               <nav className="hidden md:flex items-center space-x-6">
                 <Button variant="ghost" className="font-medium" asChild><Link to="/dashboard">Dashboard</Link></Button>
                 <Button variant="ghost" asChild><Link to="/chat">Chat</Link></Button>
