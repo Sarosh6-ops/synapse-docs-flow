@@ -96,7 +96,7 @@ const Dashboard = () => {
       return;
     }
 
-    const toastId = "upload-toast";
+    const toastId = `upload-${file.name}-${Math.random()}`;
     toast({
       id: toastId,
       title: "Uploading...",
