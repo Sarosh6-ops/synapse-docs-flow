@@ -11,3 +11,15 @@ export interface Message {
   chatId?: string;
   participants?: string[];
 }
+
+export interface Document {
+    id: string;
+    title: string;
+    type: string;
+    size: number;
+    uploadedAt: Timestamp;
+    status: 'analyzed' | 'processing' | 'error';
+    insights: number;
+    downloadURL: string;
+    aiScore: number | null;
+  }

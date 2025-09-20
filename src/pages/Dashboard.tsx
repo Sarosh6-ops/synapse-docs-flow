@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -20,56 +20,32 @@ import {
   Zap
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { db, storage } from '@/lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { Document } from '@/types';
+import { formatDistanceToNow } from 'date-fns';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [uploading, setUploading] = useState(false);
 
-  // Mock data for documents
-  const recentDocuments = [
-    {
-      id: 'doc-1',
-      title: 'Metro Line Extension Proposal',
-      type: 'PDF',
-      uploadedAt: '2 hours ago',
-      status: 'analyzed',
-      aiScore: 95,
-      size: '2.4 MB',
-      insights: 3
-    },
-    {
-      id: 'doc-2',
-      title: 'Safety Inspection Report Q4',
-      type: 'DOCX',
-      uploadedAt: '5 hours ago',
-      status: 'processing',
-      aiScore: null,
-      size: '1.8 MB',
-      insights: 0
-    },
-    {
-      id: 'doc-3',
-      title: 'Equipment Purchase Invoice',
-      type: 'JPG',
-      uploadedAt: '1 day ago',
-      status: 'analyzed',
-      aiScore: 88,
-      size: '856 KB',
-      insights: 5
-    },
-    {
-      id: 'doc-4',
-      title: 'Maintenance Schedule Updates',
-      type: 'PDF',
-      uploadedAt: '2 days ago',
-      status: 'analyzed',
-      aiScore: 92,
-      size: '3.1 MB',
-      insights: 2
-    }
-  ];
+  useEffect(() => {
+    const q = query(collection(db, "documents"), orderBy("uploadedAt", "desc"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const docsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Document));
+      setDocuments(docsData);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const stats = [
     { label: 'Documents Analyzed', value: '1,247', change: '+12%', icon: FileText },
@@ -88,14 +64,64 @@ const Dashboard = () => {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (files && files.length > 0) {
-      // For now, just log the files to the console
-      console.log(files);
-      toast({
-        title: "Files Selected",
-        description: `${files.length} file(s) ready for upload.`,
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    const uploadPromises = Array.from(files).map((file) => {
+      const storageRef = ref(storage, `documents/${Date.now()}-${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      return new Promise<void>((resolve, reject) => {
+        uploadTask.on(
+          "state_changed",
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            console.log("Upload is " + progress + "% done");
+          },
+          (error) => {
+            console.error("Upload failed:", error);
+            toast({
+              title: "Upload Failed",
+              description: `Could not upload ${file.name}.`,
+              variant: "destructive",
+            });
+            reject(error);
+          },
+          async () => {
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              await addDoc(collection(db, "documents"), {
+                title: file.name,
+                type: file.type,
+                size: file.size,
+                downloadURL: downloadURL,
+                uploadedAt: serverTimestamp(),
+                status: 'processing',
+                insights: 0,
+                aiScore: null,
+              });
+              toast({
+                title: "Upload Successful",
+                description: `${file.name} has been uploaded.`,
+              });
+              resolve();
+            } catch (error) {
+              console.error("Error adding document to Firestore:", error);
+              toast({
+                title: "Error",
+                description: `There was an error saving ${file.name}.`,
+                variant: "destructive",
+              });
+              reject(error);
+            }
+          }
+        );
       });
-    }
+    });
+
+    Promise.all(uploadPromises)
+      .catch((error) => console.error("One or more uploads failed", error))
+      .finally(() => setUploading(false));
   };
 
   return (
@@ -210,8 +236,8 @@ const Dashboard = () => {
                   Drag and drop your files here, or click to browse
                 </p>
               </div>
-              <Button variant="metro" size="lg" onClick={handleUpload}>
-                Choose Files
+              <Button variant="metro" size="lg" onClick={handleUpload} disabled={uploading}>
+                {uploading ? 'Uploading...' : 'Choose Files'}
               </Button>
               <input
                 type="file"
@@ -247,7 +273,7 @@ const Dashboard = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {recentDocuments.map((doc, index) => (
+            {documents.map((doc, index) => (
               <motion.div
                 key={doc.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -269,11 +295,11 @@ const Dashboard = () => {
                           </span>
                           <span className="flex items-center space-x-1">
                             <Download className="h-3 w-3" />
-                            <span>{doc.size}</span>
+                            <span>{(doc.size / (1024 * 1024)).toFixed(2)} MB</span>
                           </span>
                           <span className="flex items-center space-x-1">
                             <Clock className="h-3 w-3" />
-                            <span>{doc.uploadedAt}</span>
+                            <span>{doc.uploadedAt ? `${formatDistanceToNow(doc.uploadedAt.toDate())} ago` : 'N/A'}</span>
                           </span>
                         </div>
                       </div>
