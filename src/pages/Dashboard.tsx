@@ -83,9 +83,11 @@ const Dashboard = () => {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    handleUpload(file);
+    const files = e.target.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      handleUpload(files[i]);
+    }
   };
 
   const handleUpload = (file: File) => {
@@ -253,7 +255,7 @@ const Dashboard = () => {
           transition={{ duration: 0.6, delay: 0.3 }}
         >
           <Card className="p-8 glass-effect border-2 border-dashed border-primary/30 text-center hover:border-primary/50 transition-colors cursor-pointer" onClick={handleUploadClick}>
-            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" multiple />
             <motion.div whileHover={{ scale: 1.05 }} className="space-y-4">
               <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
                 <Upload className="h-8 w-8 text-primary" />
