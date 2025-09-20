@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Mock data for documents
   const recentDocuments = [
@@ -82,10 +83,19 @@ const Dashboard = () => {
   };
 
   const handleUpload = () => {
-    toast({
-      title: "Upload Feature",
-      description: "Document upload functionality would be implemented here",
-    });
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      // For now, just log the files to the console
+      console.log(files);
+      toast({
+        title: "Files Selected",
+        description: `${files.length} file(s) ready for upload.`,
+      });
+    }
   };
 
   return (
@@ -203,6 +213,13 @@ const Dashboard = () => {
               <Button variant="metro" size="lg" onClick={handleUpload}>
                 Choose Files
               </Button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                multiple
+              />
             </motion.div>
           </Card>
         </motion.div>
