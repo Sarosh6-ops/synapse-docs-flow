@@ -10,13 +10,11 @@ module.exports = {
     "eslint:recommended",
     "google",
   ],
- 
-
-    "@typescript-eslint/no-unused-expressions": ["error", {
-      "allowShortCircuit": true,
-      "allowTernary": true,
-      "allowTaggedTemplates": true,
-    }],
+  rules: {
+    "no-restricted-globals": ["error", "name", "length"],
+    "prefer-arrow-callback": "error",
+    "quotes": ["error", "double", {"allowTemplateLiterals": true}],
+  },
   overrides: [
     {
       files: ["**/*.spec.*"],
